@@ -13,11 +13,11 @@ class Shader
 {
 public:
 	unsigned int ID;
-	// constructor generates the shader on the fly
+	// 构造函数创建shader
 	// ------------------------------------------------------------------------
 	Shader(const char* vertexPath, const char* fragmentPath, const char* geometryPath = nullptr)
 	{
-		// 1. retrieve the vertex/fragment source code from filePath
+		// 1. 检索 vertex/fragment 文件 
 		std::string vecrtxPathstr = "shader/" + std::string(vertexPath);
 		std::string fragmentPathstr = "shader/" + std::string(fragmentPath);
 		vertexPath = vecrtxPathstr.c_str();
@@ -29,26 +29,27 @@ public:
 		std::ifstream vShaderFile;
 		std::ifstream fShaderFile;
 		std::ifstream gShaderFile;
+
 		// ensure ifstream objects can throw exceptions:
 		vShaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
 		fShaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
 		gShaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
 		try
 		{
-			// open files
+			// 打开文件
 			vShaderFile.open(vertexPath);
 			fShaderFile.open(fragmentPath);
 			std::stringstream vShaderStream, fShaderStream;
-			// read file's buffer contents into streams
+			// 读取文件到streams
 			vShaderStream << vShaderFile.rdbuf();
 			fShaderStream << fShaderFile.rdbuf();
-			// close file handlers
+			// 关闭流
 			vShaderFile.close();
 			fShaderFile.close();
-			// convert stream into string
+			// 流转换为string
 			vertexCode = vShaderStream.str();
 			fragmentCode = fShaderStream.str();
-			// if geometry shader path is present, also load a geometry shader
+			// 几何着色器如果存在，也进行读取
 			if (geometryPath != nullptr)
 			{
 				gShaderFile.open(geometryPath);
@@ -64,19 +65,23 @@ public:
 		}
 		const char* vShaderCode = vertexCode.c_str();
 		const char* fShaderCode = fragmentCode.c_str();
-		// 2. compile shaders
+
+		// 2. 编译着色器
 		unsigned int vertex, fragment;
+
 		// vertex shader
 		vertex = glCreateShader(GL_VERTEX_SHADER);
 		glShaderSource(vertex, 1, &vShaderCode, NULL);
 		glCompileShader(vertex);
 		checkCompileErrors(vertex, "VERTEX");
+
 		// fragment Shader
 		fragment = glCreateShader(GL_FRAGMENT_SHADER);
 		glShaderSource(fragment, 1, &fShaderCode, NULL);
 		glCompileShader(fragment);
 		checkCompileErrors(fragment, "FRAGMENT");
-		// if geometry shader is given, compile geometry shader
+
+		// 几何着色器存在也进行编译
 		unsigned int geometry;
 		if (geometryPath != nullptr)
 		{
@@ -86,7 +91,8 @@ public:
 			glCompileShader(geometry);
 			checkCompileErrors(geometry, "GEOMETRY");
 		}
-		// shader Program
+
+		// shader程序
 		ID = glCreateProgram();
 		glAttachShader(ID, vertex);
 		glAttachShader(ID, fragment);
@@ -94,19 +100,24 @@ public:
 			glAttachShader(ID, geometry);
 		glLinkProgram(ID);
 		checkCompileErrors(ID, "PROGRAM");
-		// delete the shaders as they're linked into our program now and no longer necessary
+
+		// 删除已经连接到程序的shader ， 不再需要
 		glDeleteShader(vertex);
 		glDeleteShader(fragment);
 		if (geometryPath != nullptr)
 			glDeleteShader(geometry);
 
 	}
+
+
 	// activate the shader
 	// ------------------------------------------------------------------------
 	void use()
 	{
 		glUseProgram(ID);
 	}
+
+
 	// utility uniform functions
 	// ------------------------------------------------------------------------
 	void setBool(const std::string& name, bool value) const

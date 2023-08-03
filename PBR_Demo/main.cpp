@@ -6,6 +6,10 @@
 
 int main()
 {
+#pragma region 初始化 设置回调函数 IMGUI
+
+
+
 	// glfw: initialize and configure
 	// ------------------------------
 	glfwInit();
@@ -64,24 +68,32 @@ int main()
 	ImGui_ImplOpenGL3_Init(glsl_version);
 
 	// -----------------------
+#pragma endregion
 
+#pragma region OpenGL设置（深度检测等） 
 
 	// configure global opengl state
 	// -----------------------------
 	glEnable(GL_DEPTH_TEST);
 	// set depth function to less than AND equal for skybox depth trick.
 	glDepthFunc(GL_LEQUAL);
-	// enable seamless cubemap sampling for lower mip levels in the pre-filter map.
+	// enable seamless cubemap sampling for lower mip levels in the pre-filter map. 表示立方体贴图的边界利用相邻面线性差值
 	glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 
-	// build and compile shaders
-	// -------------------------
+#pragma endregion
+
+#pragma region 创建Shader 设置贴图编号
+
 	Shader pbrShader("pbr/pbr.vs", "pbr/pbr.fs");
 	Shader equirectangularToCubemapShader("pbr/cubemap.vs", "pbr/equirectangular_to_cubemap.fs");
 	Shader irradianceShader("pbr/cubemap.vs", "pbr/irradiance_convolution.fs");
 	Shader prefilterShader("pbr/cubemap.vs", "pbr/prefilter.fs");
 	Shader brdfShader("pbr/brdf.vs", "pbr/brdf.fs");
 	Shader backgroundShader("pbr/background.vs", "pbr/background.fs");
+
+	// 延迟渲染
+	Shader GeometryPass("deffered_shading/g_buffer.vs", "deffered_shading/g_buffer.fs");
+	Shader shaderLightBox("deffered_shading/deferred_light_box.vs", "deffered_shading/deferred_light_box.fs");
 
 	pbrShader.use();
 	pbrShader.setInt("irradianceMap", 0);
@@ -95,8 +107,12 @@ int main()
 
 	backgroundShader.use();
 	backgroundShader.setInt("environmentMap", 0);
+#pragma endregion
 
-	// load PBR material textures
+#pragma region 加载PBR贴图 设置光源位置颜色
+
+
+	// 加载PBR贴图
 	// --------------------------
 	// rusted iron
 	unsigned int ironAlbedoMap = loadTexture("image/pbr/rusted_iron/rusted_iron_albedo.png");
@@ -107,24 +123,26 @@ int main()
 
 
 
-
-
 	// lights
 	// ------
-	glm::vec3 lightPositions[] = {
+	vector<glm::vec3> lightPositions = {
 		glm::vec3(-10.0f,  10.0f, 10.0f),
 		glm::vec3(10.0f,  10.0f, 10.0f),
 		glm::vec3(-10.0f, -10.0f, 10.0f),
 		glm::vec3(10.0f, -10.0f, 10.0f),
 	};
-	glm::vec3 lightColors[] = {
+	vector<glm::vec3> lightColors = {
 		glm::vec3(300.0f, 300.0f, 300.0f),
 		glm::vec3(300.0f, 300.0f, 300.0f),
 		glm::vec3(300.0f, 300.0f, 300.0f),
 		glm::vec3(300.0f, 300.0f, 300.0f)
 	};
 
-	// pbr: setup framebuffer
+#pragma endregion
+
+#pragma region 设置PBR:数据加载HDR贴图到帧缓冲渲染到envCubeMap （用于漫反射滤波，镜面反射预滤波以及天空盒）
+
+	// pbr: 设置帧缓冲
 	// ----------------------
 	unsigned int captureFBO;
 	unsigned int captureRBO;
@@ -136,7 +154,7 @@ int main()
 	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, 512, 512);
 	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, captureRBO);
 
-	// pbr: load the HDR environment map
+	// pbr: 加载HDR环境贴图
 	// ---------------------------------
 	stbi_set_flip_vertically_on_load(true);
 	int width, height, nrComponents;
@@ -160,7 +178,7 @@ int main()
 		std::cout << "Failed to load HDR image." << std::endl;
 	}
 
-	// pbr: setup cubemap to render to and attach to framebuffer
+	// pbr: 设置用来渲染的HDR CubeMap
 	// ---------------------------------------------------------
 	unsigned int envCubemap;
 	glGenTextures(1, &envCubemap);
@@ -172,10 +190,10 @@ int main()
 	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR); // enable pre-filter mipmap sampling (combatting visible dots artifact)
+	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR); // 启用mipmap对抗预滤波卷积的亮点
 	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-	// pbr: set up projection and view matrices for capturing data onto the 6 cubemap face directions
+	// pbr: 设置投影和view矩阵用以采样cubemap的六个面
 	// ----------------------------------------------------------------------------------------------
 	glm::mat4 captureProjection = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 10.0f);
 	glm::mat4 captureViews[] =
@@ -188,7 +206,7 @@ int main()
 		glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f,  0.0f, -1.0f), glm::vec3(0.0f, -1.0f,  0.0f))
 	};
 
-	// pbr: convert HDR equirectangular environment map to cubemap equivalent
+	// pbr: 转换HDR到cubemap
 	// ----------------------------------------------------------------------
 	equirectangularToCubemapShader.use();
 	equirectangularToCubemapShader.setInt("equirectangularMap", 0);
@@ -196,21 +214,26 @@ int main()
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, hdrTexture);
 
-	glViewport(0, 0, 512, 512); // don't forget to configure the viewport to the capture dimensions.
-	glBindFramebuffer(GL_FRAMEBUFFER, captureFBO);
+	glViewport(0, 0, 512, 512); // 更改采样窗口大小 只需要512
+	glBindFramebuffer(GL_FRAMEBUFFER, captureFBO); // 渲染到采样帧缓冲上
 	for (unsigned int i = 0; i < 6; ++i)
 	{
 		equirectangularToCubemapShader.setMat4("view", captureViews[i]);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, envCubemap, 0);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, envCubemap, 0); //绑定贴图到当前采样帧缓冲
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		renderCube();
 	}
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-	// then let OpenGL generate mipmaps from first mip face (combatting visible dots artifact)
+	// 令OpenGL生成mipmap对抗预滤波卷积产生的亮点，原始的采样只从一张envCubemap上采样，不论粗糙值，现在使用mipmap进行分级，根据粗糙值选择不同的mipmap
 	glBindTexture(GL_TEXTURE_CUBE_MAP, envCubemap);
 	glGenerateMipmap(GL_TEXTURE_CUBE_MAP);
+
+#pragma endregion
+
+#pragma region 设置PBR:创建用于漫反射的辐射度irradianCecubemap
+
 
 	// pbr: create an irradiance cubemap, and re-scale capture FBO to irradiance scale.
 	// --------------------------------------------------------------------------------
@@ -251,7 +274,12 @@ int main()
 	}
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-	// pbr: create a pre-filter cubemap, and re-scale capture FBO to pre-filter scale.
+#pragma endregion
+
+#pragma region 设置PBR:创建镜面反射预滤波贴图
+
+
+	// pbr: 创建预滤波贴图，并将FBO的size更改为预滤波的scale
 	// --------------------------------------------------------------------------------
 	unsigned int prefilterMap;
 	glGenTextures(1, &prefilterMap);
@@ -263,12 +291,12 @@ int main()
 	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR); // be sure to set minification filter to mip_linear 
+	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR); // 开启mipamp三线性过滤
 	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	// generate mipmaps for the cubemap so OpenGL automatically allocates the required memory.
+	// 生成mipmap
 	glGenerateMipmap(GL_TEXTURE_CUBE_MAP);
 
-	// pbr: run a quasi monte-carlo simulation on the environment lighting to create a prefilter (cube)map.
+	// pbr: 运行蒙特卡洛模拟采样预滤波贴图（多个mipmap应对不同roughness）
 	// ----------------------------------------------------------------------------------------------------
 	prefilterShader.use();
 	prefilterShader.setInt("environmentMap", 0);
@@ -280,7 +308,7 @@ int main()
 	unsigned int maxMipLevels = 5;
 	for (unsigned int mip = 0; mip < maxMipLevels; ++mip)
 	{
-		// reisze framebuffer according to mip-level size.
+		// 调整对应mipmap的fbo size
 		unsigned int mipWidth = static_cast<unsigned int>(128 * std::pow(0.5, mip));
 		unsigned int mipHeight = static_cast<unsigned int>(128 * std::pow(0.5, mip));
 		glBindRenderbuffer(GL_RENDERBUFFER, captureRBO);
@@ -300,6 +328,10 @@ int main()
 	}
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+#pragma endregion
+
+#pragma region 设置PBR:创建BRDFLUT(以BRFD的输入n*wi(范围在0.0和1.0之间)作为横坐标,以粗糙度作为纵坐标,存储是菲涅耳响应的系数(R通道)和偏差值(G通道))
+	
 	// pbr: generate a 2D LUT from the BRDF equations used.
 	// ----------------------------------------------------
 	unsigned int brdfLUTTexture;
@@ -327,8 +359,81 @@ int main()
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+#pragma endregion
 
-	// initialize static shader uniforms before rendering
+#pragma region Deffered Shading: 初始化GemortyPass帧缓冲
+
+	std::vector<glm::vec3> objectPositions;
+	objectPositions.push_back(glm::vec3(-3.0, -0.5, -3.0));
+	objectPositions.push_back(glm::vec3(0.0, -0.5, -3.0));
+	objectPositions.push_back(glm::vec3(3.0, -0.5, -3.0));
+	objectPositions.push_back(glm::vec3(-3.0, -0.5, 0.0));
+	objectPositions.push_back(glm::vec3(0.0, -0.5, 0.0));
+	objectPositions.push_back(glm::vec3(3.0, -0.5, 0.0));
+	objectPositions.push_back(glm::vec3(-3.0, -0.5, 3.0));
+	objectPositions.push_back(glm::vec3(0.0, -0.5, 3.0));
+	objectPositions.push_back(glm::vec3(3.0, -0.5, 3.0));
+
+	unsigned int gBuffer;
+	glGenFramebuffers(1, &gBuffer);
+	glBindFramebuffer(GL_FRAMEBUFFER, gBuffer);
+
+	unsigned int gPosition, gNormal, gAlbedo , gMetallic_Roughness_AO;
+	// 位置 color buffer
+	glGenTextures(1, &gPosition);
+	glBindTexture(GL_TEXTURE_2D, gPosition);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGBA, GL_FLOAT, NULL);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gPosition, 0);
+	// 法线 color buffer
+	glGenTextures(1, &gNormal);
+	glBindTexture(GL_TEXTURE_2D, gNormal);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGBA, GL_FLOAT, NULL);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, gNormal, 0);
+	// albedoMap  color buffer
+	glGenTextures(1, &gAlbedo);
+	glBindTexture(GL_TEXTURE_2D, gAlbedo);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGBA, GL_FLOAT, NULL);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, gAlbedo, 0);
+
+	// metalli_roughness_ao   color buffer 分别储存在RGB
+	glGenTextures(1, &gMetallic_Roughness_AO);
+	glBindTexture(GL_TEXTURE_2D, gMetallic_Roughness_AO);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGBA, GL_FLOAT, NULL);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, gMetallic_Roughness_AO, 0);
+
+	// tell OpenGL which color attachments we'll use (of this framebuffer) for rendering  告诉OpenGL我们将要使用(帧缓冲的)哪种颜色附件来进行渲染
+	unsigned int attachments[4] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2 ， GL_COLOR_ATTACHMENT3 };
+	glDrawBuffers(4, attachments);
+
+	// create and attach depth buffer (renderbuffer) 深度附件
+	unsigned int rboDepth;
+	glGenRenderbuffers(1, &rboDepth);
+	glBindRenderbuffer(GL_RENDERBUFFER, rboDepth);
+	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, SCR_WIDTH, SCR_HEIGHT);
+	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rboDepth);
+
+	// finally check if framebuffer is complete
+	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+		std::cout << "Framebuffer not complete!" << std::endl;
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+#pragma endregion
+
+
+
+
+
+
+
+	// 初始化不变的 shader uniform变量
 	// --------------------------------------------------
 	glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
 	pbrShader.use();
@@ -336,16 +441,16 @@ int main()
 	backgroundShader.use();
 	backgroundShader.setMat4("projection", projection);
 
-	// then before rendering, configure the viewport to the original framebuffer's screen dimensions
+	// 还原窗口大小
 	int scrWidth, scrHeight;
 	glfwGetFramebufferSize(window, &scrWidth, &scrHeight);
 	glViewport(0, 0, scrWidth, scrHeight);
 
-	// render loop
+	// 渲染循环
 	// -----------
 	while (!glfwWindowShouldClose(window))
 	{
-		// per-frame time logic
+		// 帧率信息
 		// --------------------
 		float currentFrame = static_cast<float>(glfwGetTime());
 		deltaTime = currentFrame - lastFrame;
@@ -368,10 +473,8 @@ int main()
 
 			ImGui::End();
 		}
-
-
-
 		// *************************************************************************
+
 
 		// input
 		// -----
@@ -381,6 +484,75 @@ int main()
 		// ------
 		glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+#pragma region 1. geometry pass 渲染信息到gbuffer
+		
+		glBindFramebuffer(GL_FRAMEBUFFER, gBuffer);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
+		glm::mat4 view = camera.GetViewMatrix();
+		glm::mat4 model = glm::mat4(1.0f);
+		GeometryPass.use();
+		GeometryPass.setMat4("projection", projection);
+		GeometryPass.setMat4("view", view);
+		for (unsigned int i = 0; i < objectPositions.size(); i++)
+		{
+			model = glm::mat4(1.0f);
+			model = glm::translate(model, objectPositions[i]);
+			model = glm::scale(model, glm::vec3(0.25f));
+			GeometryPass.setMat4("model", model);
+			renderSphere();
+		}
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+#pragma endregion 
+		
+
+#pragma region 2. lighting pass
+		
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		pbrShader.use();
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, gPosition);//绑定g-buffer输出的纹理
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, gNormal);//绑定g-buffer输出的纹理
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, gAlbedo);//绑定g-buffer输出的纹理
+		glActiveTexture(GL_TEXTURE3);
+		glBindTexture(GL_TEXTURE_2D, gMetallic_Roughness_AO);//绑定g-buffer输出的纹理
+		// send light relevant uniforms
+		for (unsigned int i = 0; i < lightPositions.size(); i++)
+		{
+			pbrShader.setVec3("lights[" + std::to_string(i) + "].Position", lightPositions[i]);
+			pbrShader.setVec3("lights[" + std::to_string(i) + "].Color", lightColors[i]);
+			// update attenuation parameters and calculate radius
+			const float constant = 1.0f; // note that we don't send this to the shader, we assume it is always 1.0 (in our case)
+			const float linear = 0.7f;
+			const float quadratic = 1.8f;
+			pbrShader.setFloat("lights[" + std::to_string(i) + "].Linear", linear);
+			pbrShader.setFloat("lights[" + std::to_string(i) + "].Quadratic", quadratic);
+			// then calculate radius of light volume/sphere
+			const float maxBrightness = std::fmaxf(std::fmaxf(lightColors[i].r, lightColors[i].g), lightColors[i].b);
+			// 光体积半径
+			float radius = (-linear + std::sqrt(linear * linear - 4 * quadratic * (constant - (256.0f / 5.0f) * maxBrightness))) / (2.0f * quadratic);
+			pbrShader.setFloat("lights[" + std::to_string(i) + "].Radius", radius);
+		}
+		pbrShader.setVec3("viewPos", camera.Position);
+		// finally render quad
+		renderQuad();
+
+		// 2.5. copy content of geometry's depth buffer to default framebuffer's depth buffer
+		// ----------------------------------------------------------------------------------
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, gBuffer);
+		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0); // write to default framebuffer
+		// blit to default framebuffer. Note that this may or may not work as the internal formats of both the FBO and default framebuffer have to match.
+		// the internal formats are implementation defined. This works on all of my systems, but if it doesn't on yours you'll likely have to write to the 		
+		// depth buffer in another shader stage (or somehow see to match the default framebuffer's internal format with the FBO's internal format).
+		glBlitFramebuffer(0, 0, SCR_WIDTH, SCR_HEIGHT, 0, 0, SCR_WIDTH, SCR_HEIGHT, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+
+#pragma endregion 
+
 
 		// render scene, supplying the convoluted irradiance map to the final shader.
 		// ------------------------------------------------------------------------------------------
@@ -416,95 +588,23 @@ int main()
 		pbrShader.setMat3("normalMatrix", glm::transpose(glm::inverse(glm::mat3(model))));
 		renderSphere();
 
-		//// gold
-		//glActiveTexture(GL_TEXTURE3);
-		//glBindTexture(GL_TEXTURE_2D, goldAlbedoMap);
-		//glActiveTexture(GL_TEXTURE4);
-		//glBindTexture(GL_TEXTURE_2D, goldNormalMap);
-		//glActiveTexture(GL_TEXTURE5);
-		//glBindTexture(GL_TEXTURE_2D, goldMetallicMap);
-		//glActiveTexture(GL_TEXTURE6);
-		//glBindTexture(GL_TEXTURE_2D, goldRoughnessMap);
-		//glActiveTexture(GL_TEXTURE7);
-		//glBindTexture(GL_TEXTURE_2D, goldAOMap);
-
-		//model = glm::mat4(1.0f);
-		//model = glm::translate(model, glm::vec3(-3.0, 0.0, 2.0));
-		//pbrShader.setMat4("model", model);
-		//pbrShader.setMat3("normalMatrix", glm::transpose(glm::inverse(glm::mat3(model))));
-		//renderSphere();
-
-		//// grass
-		//glActiveTexture(GL_TEXTURE3);
-		//glBindTexture(GL_TEXTURE_2D, grassAlbedoMap);
-		//glActiveTexture(GL_TEXTURE4);
-		//glBindTexture(GL_TEXTURE_2D, grassNormalMap);
-		//glActiveTexture(GL_TEXTURE5);
-		//glBindTexture(GL_TEXTURE_2D, grassMetallicMap);
-		//glActiveTexture(GL_TEXTURE6);
-		//glBindTexture(GL_TEXTURE_2D, grassRoughnessMap);
-		//glActiveTexture(GL_TEXTURE7);
-		//glBindTexture(GL_TEXTURE_2D, grassAOMap);
-
-		//model = glm::mat4(1.0f);
-		//model = glm::translate(model, glm::vec3(-1.0, 0.0, 2.0));
-		//pbrShader.setMat4("model", model);
-		//pbrShader.setMat3("normalMatrix", glm::transpose(glm::inverse(glm::mat3(model))));
-		//renderSphere();
-
-		//// plastic
-		//glActiveTexture(GL_TEXTURE3);
-		//glBindTexture(GL_TEXTURE_2D, plasticAlbedoMap);
-		//glActiveTexture(GL_TEXTURE4);
-		//glBindTexture(GL_TEXTURE_2D, plasticNormalMap);
-		//glActiveTexture(GL_TEXTURE5);
-		//glBindTexture(GL_TEXTURE_2D, plasticMetallicMap);
-		//glActiveTexture(GL_TEXTURE6);
-		//glBindTexture(GL_TEXTURE_2D, plasticRoughnessMap);
-		//glActiveTexture(GL_TEXTURE7);
-		//glBindTexture(GL_TEXTURE_2D, plasticAOMap);
-
-		//model = glm::mat4(1.0f);
-		//model = glm::translate(model, glm::vec3(1.0, 0.0, 2.0));
-		//pbrShader.setMat4("model", model);
-		//pbrShader.setMat3("normalMatrix", glm::transpose(glm::inverse(glm::mat3(model))));
-		//renderSphere();
-
-		//// wall
-		//glActiveTexture(GL_TEXTURE3);
-		//glBindTexture(GL_TEXTURE_2D, wallAlbedoMap);
-		//glActiveTexture(GL_TEXTURE4);
-		//glBindTexture(GL_TEXTURE_2D, wallNormalMap);
-		//glActiveTexture(GL_TEXTURE5);
-		//glBindTexture(GL_TEXTURE_2D, wallMetallicMap);
-		//glActiveTexture(GL_TEXTURE6);
-		//glBindTexture(GL_TEXTURE_2D, wallRoughnessMap);
-		//glActiveTexture(GL_TEXTURE7);
-		//glBindTexture(GL_TEXTURE_2D, wallAOMap);
-
-		//model = glm::mat4(1.0f);
-		//model = glm::translate(model, glm::vec3(3.0, 0.0, 2.0));
-		//pbrShader.setMat4("model", model);
-		//pbrShader.setMat3("normalMatrix", glm::transpose(glm::inverse(glm::mat3(model))));
-		//renderSphere();
-
-		// render light source (simply re-render sphere at light positions)
-		// this looks a bit off as we use the same shader, but it'll make their positions obvious and 
-		// keeps the codeprint small.
-		for (unsigned int i = 0; i < sizeof(lightPositions) / sizeof(lightPositions[0]); ++i)
+#pragma region 渲染光源
+		shaderLightBox.use();
+		shaderLightBox.setMat4("projection", projection);
+		shaderLightBox.setMat4("view", view);
+		for (unsigned int i = 0; i < lightPositions.size(); i++)
 		{
-			glm::vec3 newPos = lightPositions[i] + glm::vec3(sin(glfwGetTime() * 5.0) * 5.0, 0.0, 0.0);
-			newPos = lightPositions[i];
-			pbrShader.setVec3("lightPositions[" + std::to_string(i) + "]", newPos);
-			pbrShader.setVec3("lightColors[" + std::to_string(i) + "]", lightColors[i]);
-
 			model = glm::mat4(1.0f);
-			model = glm::translate(model, newPos);
-			model = glm::scale(model, glm::vec3(0.5f));
-			pbrShader.setMat4("model", model);
-			pbrShader.setMat3("normalMatrix", glm::transpose(glm::inverse(glm::mat3(model))));
-			renderSphere();
+			model = glm::translate(model, lightPositions[i]);
+			model = glm::scale(model, glm::vec3(0.125f));
+			shaderLightBox.setMat4("model", model);
+			shaderLightBox.setVec3("lightColor", lightColors[i]);
+			renderCube();
 		}
+#pragma endregion
+
+		
+#pragma region 渲染天空盒
 
 		// render skybox (render as last to prevent overdraw)
 		backgroundShader.use();
@@ -515,6 +615,10 @@ int main()
 		//glBindTexture(GL_TEXTURE_CUBE_MAP, irradianceMap); // display irradiance map
 		//glBindTexture(GL_TEXTURE_CUBE_MAP, prefilterMap); // display prefilter map
 		renderCube();
+
+#pragma endregion
+
+		
 
 		// render BRDF map to screen 渲染brdf贴图
 		//brdfShader.use();
