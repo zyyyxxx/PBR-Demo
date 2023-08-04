@@ -45,6 +45,7 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 void renderSphere();
 void renderCube();
 void renderQuad();
+void renderFloor();
 
 
 // texture

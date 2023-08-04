@@ -27,7 +27,7 @@ int main()
 
 	// glfw window creation
 	// --------------------
-	GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "LearnOpenGL", NULL, NULL);
+	GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "PBR-Demo", NULL, NULL);
 	glfwMakeContextCurrent(window);
 	if (window == NULL)
 	{
@@ -84,7 +84,8 @@ int main()
 
 #pragma region 创建Shader 设置贴图编号
 
-	Shader pbrShader("pbr/pbr.vs", "pbr/pbr.fs");
+	Shader pbrShader("deffered_shading/deffered_shading.vs", "deffered_shading/deffered_shading.fs");
+
 	Shader equirectangularToCubemapShader("pbr/cubemap.vs", "pbr/equirectangular_to_cubemap.fs");
 	Shader irradianceShader("pbr/cubemap.vs", "pbr/irradiance_convolution.fs");
 	Shader prefilterShader("pbr/cubemap.vs", "pbr/prefilter.fs");
@@ -95,21 +96,20 @@ int main()
 	Shader GeometryPass("deffered_shading/g_buffer.vs", "deffered_shading/g_buffer.fs");
 	Shader shaderLightBox("deffered_shading/deferred_light_box.vs", "deffered_shading/deferred_light_box.fs");
 
-	pbrShader.use();
-	pbrShader.setInt("irradianceMap", 0);
-	pbrShader.setInt("prefilterMap", 1);
-	pbrShader.setInt("brdfLUT", 2);
-	pbrShader.setInt("albedoMap", 3);
-	pbrShader.setInt("normalMap", 4);
-	pbrShader.setInt("metallicMap", 5);
-	pbrShader.setInt("roughnessMap", 6);
-	pbrShader.setInt("aoMap", 7);
+	/*pbrShader.use();
+	pbrShader.setInt("gPosition", 0);
+	pbrShader.setInt("gNormal", 1);
+	pbrShader.setInt("gAlbedo", 2);
+	pbrShader.setInt("gMetallic_Roughness_AO", 3);
+	pbrShader.setInt("irradianceMap", 4);
+	pbrShader.setInt("prefilterMap", 5);
+	pbrShader.setInt("brdfLUT", 6);*/
 
 	backgroundShader.use();
 	backgroundShader.setInt("environmentMap", 0);
 #pragma endregion
 
-#pragma region 加载PBR贴图 设置光源位置颜色
+#pragma region 加载PBR贴图 设置光源位置与颜色
 
 
 	// 加载PBR贴图
@@ -121,22 +121,43 @@ int main()
 	unsigned int ironRoughnessMap = loadTexture("image/pbr/rusted_iron/rusted_iron_roughness.png");
 	unsigned int ironAOMap = loadTexture("image/pbr/rusted_iron/rusted_iron_ao.png");
 
+	//gold
+	unsigned int goldAlbedoMap = loadTexture("image/pbr/plastic/plastic_albedo.png");
+	unsigned int goldNormalMap = loadTexture("image/pbr/plastic/plastic_normal.png");
+	unsigned int goldMetallicMap = loadTexture("image/pbr/plastic/plastic_Metallic.png");
+	unsigned int goldRoughnessMap = loadTexture("image/pbr/plastic/plasitc_roughness.png");
+	unsigned int goldAOMap = loadTexture("image/pbr/plastic/plastic_ao.png");
+
+	//grass
+	unsigned int grassAlbedoMap = loadTexture("image/pbr/grass/grass_albedo.png");
+	unsigned int grassNormalMap = loadTexture("image/pbr/grass/grass_normal.png");
+	unsigned int grassMetallicMap = loadTexture("image/pbr/grass/grass_Metallic.png");
+	unsigned int grassRoughnessMap = loadTexture("image/pbr/grass/grass_roughness.png");
+	unsigned int grassAOMap = loadTexture("image/pbr/grass/grass_ao.png");
 
 
-	// lights
-	// ------
-	vector<glm::vec3> lightPositions = {
-		glm::vec3(-10.0f,  10.0f, 10.0f),
-		glm::vec3(10.0f,  10.0f, 10.0f),
-		glm::vec3(-10.0f, -10.0f, 10.0f),
-		glm::vec3(10.0f, -10.0f, 10.0f),
-	};
-	vector<glm::vec3> lightColors = {
-		glm::vec3(300.0f, 300.0f, 300.0f),
-		glm::vec3(300.0f, 300.0f, 300.0f),
-		glm::vec3(300.0f, 300.0f, 300.0f),
-		glm::vec3(300.0f, 300.0f, 300.0f)
-	};
+	// lighting info
+	// -------------
+	int NR_LIGHTS = 4;
+	std::vector<glm::vec3> lightPositions;
+	std::vector<glm::vec3> lightColors;
+	srand(13);
+	for (unsigned int i = 0; i < NR_LIGHTS; i++)
+	{
+		// calculate slightly random offsets
+		float xPos = static_cast<float>(((rand() % 100) / 100.0) * 6.0 - 3.0);
+		float yPos = static_cast<float>(((rand() % 100) / 100.0) * 6.0 - 4.0);
+		float zPos = static_cast<float>(((rand() % 100) / 100.0) * 6.0 - 3.0);
+		lightPositions.push_back(glm::vec3(xPos, yPos, zPos));
+		// also calculate random color
+		float rColor = static_cast<float>(((rand() % 100) / 200.0f) + 0.5)*300.f; // between 0.5 and 1.)
+		float gColor = static_cast<float>(((rand() % 100) / 200.0f) + 0.5)*300.f; // between 0.5 and 1.)
+		float bColor = static_cast<float>(((rand() % 100) / 200.0f) + 0.5)*300.f; // between 0.5 and 1.)
+		//float rColor = 300.0f; // between 0.5 and 1.)
+		//float gColor = 300.0f; // between 0.5 and 1.)
+		//float bColor = 300.0f; // between 0.5 and 1.)
+		lightColors.push_back(glm::vec3(rColor, gColor, bColor));
+	}
 
 #pragma endregion
 
@@ -378,6 +399,7 @@ int main()
 	glGenFramebuffers(1, &gBuffer);
 	glBindFramebuffer(GL_FRAMEBUFFER, gBuffer);
 
+	// 纹理创建预设置 储存几何信息到四个贴图中
 	unsigned int gPosition, gNormal, gAlbedo , gMetallic_Roughness_AO;
 	// 位置 color buffer
 	glGenTextures(1, &gPosition);
@@ -410,7 +432,7 @@ int main()
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, gMetallic_Roughness_AO, 0);
 
 	// tell OpenGL which color attachments we'll use (of this framebuffer) for rendering  告诉OpenGL我们将要使用(帧缓冲的)哪种颜色附件来进行渲染
-	unsigned int attachments[4] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2 ， GL_COLOR_ATTACHMENT3 };
+	unsigned int attachments[4] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2 , GL_COLOR_ATTACHMENT3 };
 	glDrawBuffers(4, attachments);
 
 	// create and attach depth buffer (renderbuffer) 深度附件
@@ -433,11 +455,30 @@ int main()
 
 
 
-	// 初始化不变的 shader uniform变量
+	// 初始化不变的投影矩阵 光源位置
 	// --------------------------------------------------
 	glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
 	pbrShader.use();
 	pbrShader.setMat4("projection", projection);
+	
+	pbrShader.setInt("NR_LIGHTS", NR_LIGHTS);
+	// 传递光源信息到fs
+	for (unsigned int i = 0; i < lightPositions.size(); i++)
+	{
+		pbrShader.setVec3("lights[" + std::to_string(i) + "].Position", lightPositions[i]);
+		pbrShader.setVec3("lights[" + std::to_string(i) + "].Color", lightColors[i]);
+		// update attenuation parameters and calculate radius
+		const float constant = 1.0f; // note that we don't send this to the shader, we assume it is always 1.0 (in our case)
+		const float linear = 0.7f;
+		const float quadratic = 1.8f;
+		pbrShader.setFloat("lights[" + std::to_string(i) + "].Linear", linear);
+		pbrShader.setFloat("lights[" + std::to_string(i) + "].Quadratic", quadratic);
+		// then calculate radius of light volume/sphere
+		const float maxBrightness = std::fmaxf(std::fmaxf(lightColors[i].r, lightColors[i].g), lightColors[i].b);
+		// 光体积半径
+		float radius = (-linear + std::sqrt(linear * linear - 4 * quadratic * (constant - (256.0f / 5.0f) * maxBrightness))) / (2.0f * quadratic);
+		pbrShader.setFloat("lights[" + std::to_string(i) + "].Radius", radius);
+	}
 	backgroundShader.use();
 	backgroundShader.setMat4("projection", projection);
 
@@ -495,7 +536,32 @@ int main()
 		GeometryPass.use();
 		GeometryPass.setMat4("projection", projection);
 		GeometryPass.setMat4("view", view);
-		for (unsigned int i = 0; i < objectPositions.size(); i++)
+
+		// 绑定输入球体pbr纹理
+		GeometryPass.setInt("albedoMap", 0);
+		GeometryPass.setInt("normalMap", 1);
+		GeometryPass.setInt("metallicMap", 2);
+		GeometryPass.setInt("roughnessMap", 3);
+		GeometryPass.setInt("aoMap", 4);
+
+
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, ironAlbedoMap);
+
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, ironNormalMap);
+
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, ironMetallicMap);
+
+		glActiveTexture(GL_TEXTURE3);
+		glBindTexture(GL_TEXTURE_2D, ironRoughnessMap);
+
+		glActiveTexture(GL_TEXTURE4);
+		glBindTexture(GL_TEXTURE_2D, ironAOMap);
+
+		// 渲染材质球
+		for (unsigned int i = 0; i < objectPositions.size(); i++) 
 		{
 			model = glm::mat4(1.0f);
 			model = glm::translate(model, objectPositions[i]);
@@ -503,6 +569,44 @@ int main()
 			GeometryPass.setMat4("model", model);
 			renderSphere();
 		}
+
+		// 绑定地面pbr纹理
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, grassAlbedoMap);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, grassNormalMap);
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, grassMetallicMap);
+		glActiveTexture(GL_TEXTURE3);
+		glBindTexture(GL_TEXTURE_2D, grassRoughnessMap);
+		glActiveTexture(GL_TEXTURE4);
+		glBindTexture(GL_TEXTURE_2D, grassAOMap);
+
+		model = glm::mat4(1.0f);
+		model = glm::translate(model, glm::vec3(0,-0.5,0));
+		model = glm::scale(model, glm::vec3(1.f));
+		GeometryPass.setMat4("model", model);
+		renderFloor();
+
+		// 球
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, goldAlbedoMap);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, goldNormalMap);
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, goldMetallicMap);
+		glActiveTexture(GL_TEXTURE3);
+		glBindTexture(GL_TEXTURE_2D, goldRoughnessMap);
+		glActiveTexture(GL_TEXTURE4);
+		glBindTexture(GL_TEXTURE_2D, goldAOMap);
+		model = glm::mat4(1.0f);
+		model = glm::translate(model, glm::vec3(0, 1, 0));
+		model = glm::scale(model, glm::vec3(0.25f));
+		GeometryPass.setMat4("model", model);
+		renderSphere();
+
+
+
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 #pragma endregion 
 		
@@ -511,6 +615,16 @@ int main()
 		
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		pbrShader.use();
+		pbrShader.use();
+		pbrShader.setInt("gPosition", 0);
+		pbrShader.setInt("gNormal", 1);
+		pbrShader.setInt("gAlbedo", 2);
+		pbrShader.setInt("gMetallic_Roughness_AO", 3);
+		pbrShader.setInt("irradianceMap", 4);
+		pbrShader.setInt("prefilterMap", 5);
+		pbrShader.setInt("brdfLUT", 6);
+
+
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, gPosition);//绑定g-buffer输出的纹理
 		glActiveTexture(GL_TEXTURE1);
@@ -519,23 +633,15 @@ int main()
 		glBindTexture(GL_TEXTURE_2D, gAlbedo);//绑定g-buffer输出的纹理
 		glActiveTexture(GL_TEXTURE3);
 		glBindTexture(GL_TEXTURE_2D, gMetallic_Roughness_AO);//绑定g-buffer输出的纹理
-		// send light relevant uniforms
-		for (unsigned int i = 0; i < lightPositions.size(); i++)
-		{
-			pbrShader.setVec3("lights[" + std::to_string(i) + "].Position", lightPositions[i]);
-			pbrShader.setVec3("lights[" + std::to_string(i) + "].Color", lightColors[i]);
-			// update attenuation parameters and calculate radius
-			const float constant = 1.0f; // note that we don't send this to the shader, we assume it is always 1.0 (in our case)
-			const float linear = 0.7f;
-			const float quadratic = 1.8f;
-			pbrShader.setFloat("lights[" + std::to_string(i) + "].Linear", linear);
-			pbrShader.setFloat("lights[" + std::to_string(i) + "].Quadratic", quadratic);
-			// then calculate radius of light volume/sphere
-			const float maxBrightness = std::fmaxf(std::fmaxf(lightColors[i].r, lightColors[i].g), lightColors[i].b);
-			// 光体积半径
-			float radius = (-linear + std::sqrt(linear * linear - 4 * quadratic * (constant - (256.0f / 5.0f) * maxBrightness))) / (2.0f * quadratic);
-			pbrShader.setFloat("lights[" + std::to_string(i) + "].Radius", radius);
-		}
+
+		// 绑定IBL贴图
+		glActiveTexture(GL_TEXTURE4);
+		glBindTexture(GL_TEXTURE_CUBE_MAP, irradianceMap);
+		glActiveTexture(GL_TEXTURE5);
+		glBindTexture(GL_TEXTURE_CUBE_MAP, prefilterMap);
+		glActiveTexture(GL_TEXTURE6);
+		glBindTexture(GL_TEXTURE_2D, brdfLUTTexture);
+
 		pbrShader.setVec3("viewPos", camera.Position);
 		// finally render quad
 		renderQuad();
@@ -553,41 +659,6 @@ int main()
 
 #pragma endregion 
 
-
-		// render scene, supplying the convoluted irradiance map to the final shader.
-		// ------------------------------------------------------------------------------------------
-		pbrShader.use();
-		glm::mat4 model = glm::mat4(1.0f);
-		glm::mat4 view = camera.GetViewMatrix();
-		pbrShader.setMat4("view", view);
-		pbrShader.setVec3("camPos", camera.Position);
-
-		// bind pre-computed IBL data
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_CUBE_MAP, irradianceMap);
-		glActiveTexture(GL_TEXTURE1);
-		glBindTexture(GL_TEXTURE_CUBE_MAP, prefilterMap);
-		glActiveTexture(GL_TEXTURE2);
-		glBindTexture(GL_TEXTURE_2D, brdfLUTTexture);
-
-		// rusted iron
-		glActiveTexture(GL_TEXTURE3);
-		glBindTexture(GL_TEXTURE_2D, ironAlbedoMap);
-		glActiveTexture(GL_TEXTURE4);
-		glBindTexture(GL_TEXTURE_2D, ironNormalMap);
-		glActiveTexture(GL_TEXTURE5);
-		glBindTexture(GL_TEXTURE_2D, ironMetallicMap);
-		glActiveTexture(GL_TEXTURE6);
-		glBindTexture(GL_TEXTURE_2D, ironRoughnessMap);
-		glActiveTexture(GL_TEXTURE7);
-		glBindTexture(GL_TEXTURE_2D, ironAOMap);
-
-		model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(-5.0, 0.0, 2.0));
-		pbrShader.setMat4("model", model);
-		pbrShader.setMat3("normalMatrix", glm::transpose(glm::inverse(glm::mat3(model))));
-		renderSphere();
-
 #pragma region 渲染光源
 		shaderLightBox.use();
 		shaderLightBox.setMat4("projection", projection);
@@ -599,7 +670,7 @@ int main()
 			model = glm::scale(model, glm::vec3(0.125f));
 			shaderLightBox.setMat4("model", model);
 			shaderLightBox.setVec3("lightColor", lightColors[i]);
-			renderCube();
+			renderSphere();
 		}
 #pragma endregion
 
