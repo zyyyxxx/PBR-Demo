@@ -25,6 +25,8 @@
 extern const unsigned int SCR_WIDTH;
 extern const unsigned int SCR_HEIGHT;
 
+extern bool shadows ;
+
 // camera
 extern Camera camera;
 extern float lastX;

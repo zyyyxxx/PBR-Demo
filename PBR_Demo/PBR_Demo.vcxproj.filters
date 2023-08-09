@@ -58,6 +58,9 @@
     <ClCompile Include="imgui\imgui_widgets.cpp">
       <Filter>Tool\imgui</Filter>
     </ClCompile>
+    <ClCompile Include="light.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="camera.h">
@@ -80,6 +83,9 @@
     </ClInclude>
     <ClInclude Include="stb_image.h">
       <Filter>Tool</Filter>
+    </ClInclude>
+    <ClInclude Include="light.h">
+      <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

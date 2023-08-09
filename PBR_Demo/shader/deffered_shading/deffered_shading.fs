@@ -22,11 +22,60 @@ struct Light {
     float Radius;
 };
 
-const int NR_LIGHTS = 32;
-uniform Light lights[NR_LIGHTS];
+uniform int NR_LIGHTS;
+uniform Light lights[4];
 uniform vec3 viewPos;
 
 const float PI = 3.14159265359;
+
+// shadow
+// -----------------------------------------------------
+uniform samplerCube depthCubemaps[4];
+uniform float far_plane;
+uniform bool shadows;
+
+// array of offset direction for sampling
+vec3 gridSamplingDisk[20] = vec3[]
+(
+   vec3(1, 1,  1), vec3( 1, -1,  1), vec3(-1, -1,  1), vec3(-1, 1,  1), 
+   vec3(1, 1, -1), vec3( 1, -1, -1), vec3(-1, -1, -1), vec3(-1, 1, -1),
+   vec3(1, 1,  0), vec3( 1, -1,  0), vec3(-1, -1,  0), vec3(-1, 1,  0),
+   vec3(1, 0,  1), vec3(-1,  0,  1), vec3( 1,  0, -1), vec3(-1, 0, -1),
+   vec3(0, 1,  1), vec3( 0, -1,  1), vec3( 0, -1, -1), vec3( 0, 1, -1)
+);
+
+float ShadowCalculation(vec3 fragPos , int lightIndex)
+{
+    float bias = 0.15;
+    int samples = 20;
+    float shadow = 0.0;
+
+    // 光线指向片段
+    vec3 fragToLight = fragPos - lights[lightIndex].Position;
+
+    // 光线到片段的深度
+    float currentDepth = length(fragToLight);
+    
+    float viewDistance = length(viewPos - fragPos);
+    float diskRadius = (1.0 + (viewDistance / far_plane)) / 25.0; 
+    //我们可以基于观察者里一个fragment的距离来改变diskRadius；
+    //这样我们就能根据观察者的距离来增加偏移半径了，当距离更远的时候阴影更柔和，更近了就更锐利。
+    
+    for(int i = 0; i < samples; ++i)
+    {
+        float closestDepth = texture(depthCubemaps[lightIndex], fragToLight + gridSamplingDisk[i] * diskRadius).r;
+        closestDepth *= far_plane;   // 从 [0;1] 映射回采样时的原始距离
+        
+        if(currentDepth - bias > closestDepth){
+            shadow += 1.0;
+        }
+    }
+    shadow /= float(samples);
+    
+    // 1为完全阴影
+    return shadow;
+}
+// -----------------------------------------------------
 
 
 
@@ -78,22 +127,6 @@ vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness)
 
 
 
-
-// gbuffer 信息
-//uniform sampler2D gPosition;
-//uniform sampler2D gNormal;
-//uniform sampler2D gAlbedo;
-//uniform sampler2D gMetallic_Roughness_AO;
-
-// struct Light {
-//     vec3 Position;
-//     vec3 Color;
-    
-//     float Linear;
-//     float Quadratic;
-//     float Radius;
-// };
-
 void main()
 {             
     // 从gbuffer中获取信息
@@ -124,7 +157,9 @@ void main()
     // 遍历光源进行直接光照着色
     for(int i = 0; i < NR_LIGHTS; ++i)
     {
-        
+        // 阴影映射
+        float shadow = ShadowCalculation(FragPos , i);
+
         vec3 L = normalize(lights[i].Position - WorldPos);
         vec3 H = normalize(V + L); // V和L的半程向量
 
@@ -132,7 +167,10 @@ void main()
         float attenuation = 1.0 / (1.0 + lights[i].Linear * distance + lights[i].Quadratic * distance * distance);
         //float attenuation = 1.0 / (distance * distance);
         vec3 radiance = lights[i].Color * attenuation;
-        
+
+        if(shadows == false) shadow = 0;
+        radiance *= (1-shadow);
+
         // Cook-Torrance BRDF
         float NDF = DistributionGGX(N, H, roughness);   
         float G   = GeometrySmith(N, V, L, roughness);    
@@ -155,7 +193,7 @@ void main()
 
         // scale light by NdotL
         float NdotL = max(dot(N, L), 0.0);    
-
+        
         // 添加到出射的radiance Lo
         Lo += (kD * albedo / PI + specular) * radiance * NdotL; 
         // 请注意，我们已经通过菲涅尔（kS）将BRDF乘以了一次，因此我们不会再次将其乘以kS 

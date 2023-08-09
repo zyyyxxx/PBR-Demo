@@ -52,7 +52,8 @@ public:
 			// 几何着色器如果存在，也进行读取
 			if (geometryPath != nullptr)
 			{
-				gShaderFile.open(geometryPath);
+				std::string geometryPathstr = "shader/" + std::string(geometryPath);
+				gShaderFile.open(geometryPathstr);
 				std::stringstream gShaderStream;
 				gShaderStream << gShaderFile.rdbuf();
 				gShaderFile.close();

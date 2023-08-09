@@ -1,4 +1,4 @@
 ﻿  main.cpp
-F:\OpenGL Projects\PBR-Demo\PBR_Demo\PBR_Demo\main.cpp(145,29): warning C4018: “<”: 有符号/无符号不匹配
+F:\OpenGL Projects\PBR-Demo\PBR_Demo\PBR_Demo\main.cpp(745,9): warning C4101: “depthCubemapIndices”: 未引用的局部变量
 LINK : warning LNK4098: 默认库“MSVCRT”与其他库的使用冲突；请使用 /NODEFAULTLIB:library
   PBR_Demo.vcxproj -> F:\OpenGL Projects\PBR-Demo\PBR_Demo\x64\Debug\PBR_Demo.exe
